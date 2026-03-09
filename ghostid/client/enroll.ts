@@ -34,6 +34,8 @@ export interface EnrollResult {
   enrollSig: string;
   finalizeSig: string;
   enrolled: boolean;
+  sharedSecret: Uint8Array;
+  enrollNonce: Uint8Array;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -236,7 +238,7 @@ export async function enroll(
     provider,
   );
 
-  return { biometricAccount, enrollSig, finalizeSig, enrolled };
+  return { biometricAccount, enrollSig, finalizeSig, enrolled, sharedSecret: encrypted.sharedSecret, enrollNonce: new Uint8Array(encrypted.nonce) };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

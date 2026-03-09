@@ -133,14 +133,8 @@ pub mod ghost_id {
     pub fn verify(
         ctx: Context<Verify>,
         computation_offset: u64,
-        probe0: [u8; 32],
-        probe1: [u8; 32],
-        probe2: [u8; 32],
-        probe3: [u8; 32],
-        probe4: [u8; 32],
-        probe5: [u8; 32],
-        probe6: [u8; 32],
-        probe7: [u8; 32],
+        tmpl: [[u8; 32]; 8],
+        probe: [[u8; 32]; 8],
         pubkey: [u8; 32],
         nonce: u128,
     ) -> Result<()> {
@@ -151,30 +145,25 @@ pub mod ghost_id {
             ErrorCode::NotEnrolled
         );
 
-        let bio = &ctx.accounts.biometric_account;
-
-        // Pass stored template ciphertexts + probe ciphertexts to the match circuit
         let args = ArgBuilder::new()
             .x25519_pubkey(pubkey)
             .plaintext_u128(nonce)
-            // stored template (re-encrypted under the same MXE key)
-            .encrypted_u128(bio.bios[0])
-            .encrypted_u128(bio.bios[1])
-            .encrypted_u128(bio.bios[2])
-            .encrypted_u128(bio.bios[3])
-            .encrypted_u128(bio.bios[4])
-            .encrypted_u128(bio.bios[5])
-            .encrypted_u128(bio.bios[6])
-            .encrypted_u128(bio.bios[7])
-            // probe
-            .encrypted_u128(probe0)
-            .encrypted_u128(probe1)
-            .encrypted_u128(probe2)
-            .encrypted_u128(probe3)
-            .encrypted_u128(probe4)
-            .encrypted_u128(probe5)
-            .encrypted_u128(probe6)
-            .encrypted_u128(probe7)
+            .encrypted_u128(tmpl[0])
+            .encrypted_u128(tmpl[1])
+            .encrypted_u128(tmpl[2])
+            .encrypted_u128(tmpl[3])
+            .encrypted_u128(tmpl[4])
+            .encrypted_u128(tmpl[5])
+            .encrypted_u128(tmpl[6])
+            .encrypted_u128(tmpl[7])
+            .encrypted_u128(probe[0])
+            .encrypted_u128(probe[1])
+            .encrypted_u128(probe[2])
+            .encrypted_u128(probe[3])
+            .encrypted_u128(probe[4])
+            .encrypted_u128(probe[5])
+            .encrypted_u128(probe[6])
+            .encrypted_u128(probe[7])
             .build();
 
         queue_computation(
@@ -406,7 +395,7 @@ pub struct Verify<'info> {
         bump = biometric_account.bump,
         constraint = biometric_account.enrolled @ ErrorCode::NotEnrolled,
     )]
-    pub biometric_account: Account<'info, BiometricAccount>,
+    pub biometric_account: Box<Account<'info, BiometricAccount>>,
 
     /// CHECK: subject whose biometric we're matching against
     pub subject: UncheckedAccount<'info>,
@@ -458,13 +447,13 @@ pub struct Verify<'info> {
         mut,
         address = ARCIUM_FEE_POOL_ACCOUNT_ADDRESS,
     )]
-    pub pool_account: Account<'info, FeePool>,
+    pub pool_account: Box<Account<'info, FeePool>>,
 
     #[account(
         mut,
         address = ARCIUM_CLOCK_ACCOUNT_ADDRESS
     )]
-    pub clock_account: Account<'info, ClockAccount>,
+    pub clock_account: Box<Account<'info, ClockAccount>>,
 
     pub system_program: Program<'info, System>,
     pub arcium_program: Program<'info, Arcium>,
