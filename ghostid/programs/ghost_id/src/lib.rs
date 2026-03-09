@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use arcium_anchor::prelude::*;
-use arcium_client::idl::arcium::types::{CircuitSource, OffChainCircuitSource};
+use arcium_client::idl::arcium::types::{CallbackAccount, CircuitSource, OffChainCircuitSource};
 use arcium_macros::circuit_hash;
 
 declare_id!("FvYk7gGNJijiY82XXcGKXER65JdrqmAh9h23EA86GkoB");
@@ -92,7 +92,10 @@ pub mod ghost_id {
             vec![StoreBiometricCallback::callback_ix(
                 computation_offset,
                 &ctx.accounts.mxe_account,
-                &[],
+                &[CallbackAccount {
+                    pubkey: ctx.accounts.biometric_account.key(),
+                    is_writable: true,
+                }],
             )?],
             1,
             0,
