@@ -1,7 +1,9 @@
 use anchor_lang::prelude::*;
 use arcium_anchor::prelude::*;
+use arcium_client::idl::arcium::types::{CircuitSource, OffChainCircuitSource};
+use arcium_macros::circuit_hash;
 
-declare_id!("HT8LVfZ55r3TyZ1DrZxzFnybi1sGxYMjv694o5vEx8BN");
+declare_id!("FvYk7gGNJijiY82XXcGKXER65JdrqmAh9h23EA86GkoB");
 
 const COMP_DEF_OFFSET_STORE_BIOMETRIC: u32 = comp_def_offset("store_biometric");
 const COMP_DEF_OFFSET_MATCH_BIOMETRIC: u32 = comp_def_offset("match_biometric");
@@ -18,14 +20,28 @@ pub mod ghost_id {
     pub fn init_store_biometric_comp_def(
         ctx: Context<InitStoreBiometricCompDef>,
     ) -> Result<()> {
-        init_comp_def(ctx.accounts, None, None)?;
+        init_comp_def(
+            ctx.accounts,
+            Some(CircuitSource::OffChain(OffChainCircuitSource {
+                source: "https://raw.githubusercontent.com/Emmythefirst/Privis/master/ghostid/build/store_biometric.arcis".to_string(),
+                hash: circuit_hash!("store_biometric"),
+            })),
+            None,
+        )?;
         Ok(())
     }
 
     pub fn init_match_biometric_comp_def(
         ctx: Context<InitMatchBiometricCompDef>,
     ) -> Result<()> {
-        init_comp_def(ctx.accounts, None, None)?;
+        init_comp_def(
+            ctx.accounts,
+            Some(CircuitSource::OffChain(OffChainCircuitSource {
+                source: "https://raw.githubusercontent.com/Emmythefirst/Privis/master/ghostid/build/match_biometric.arcis".to_string(),
+                hash: circuit_hash!("match_biometric"),
+            })),
+            None,
+        )?;
         Ok(())
     }
 
@@ -59,14 +75,14 @@ pub mod ghost_id {
         let args = ArgBuilder::new()
             .x25519_pubkey(pubkey)
             .plaintext_u128(nonce)
-            .encrypted_u8(bio0)
-            .encrypted_u8(bio1)
-            .encrypted_u8(bio2)
-            .encrypted_u8(bio3)
-            .encrypted_u8(bio4)
-            .encrypted_u8(bio5)
-            .encrypted_u8(bio6)
-            .encrypted_u8(bio7)
+            .encrypted_u128(bio0)
+            .encrypted_u128(bio1)
+            .encrypted_u128(bio2)
+            .encrypted_u128(bio3)
+            .encrypted_u128(bio4)
+            .encrypted_u128(bio5)
+            .encrypted_u128(bio6)
+            .encrypted_u128(bio7)
             .build();
 
         queue_computation(
@@ -139,23 +155,23 @@ pub mod ghost_id {
             .x25519_pubkey(pubkey)
             .plaintext_u128(nonce)
             // stored template (re-encrypted under the same MXE key)
-            .encrypted_u8(bio.bios[0])
-            .encrypted_u8(bio.bios[1])
-            .encrypted_u8(bio.bios[2])
-            .encrypted_u8(bio.bios[3])
-            .encrypted_u8(bio.bios[4])
-            .encrypted_u8(bio.bios[5])
-            .encrypted_u8(bio.bios[6])
-            .encrypted_u8(bio.bios[7])
+            .encrypted_u128(bio.bios[0])
+            .encrypted_u128(bio.bios[1])
+            .encrypted_u128(bio.bios[2])
+            .encrypted_u128(bio.bios[3])
+            .encrypted_u128(bio.bios[4])
+            .encrypted_u128(bio.bios[5])
+            .encrypted_u128(bio.bios[6])
+            .encrypted_u128(bio.bios[7])
             // probe
-            .encrypted_u8(probe0)
-            .encrypted_u8(probe1)
-            .encrypted_u8(probe2)
-            .encrypted_u8(probe3)
-            .encrypted_u8(probe4)
-            .encrypted_u8(probe5)
-            .encrypted_u8(probe6)
-            .encrypted_u8(probe7)
+            .encrypted_u128(probe0)
+            .encrypted_u128(probe1)
+            .encrypted_u128(probe2)
+            .encrypted_u128(probe3)
+            .encrypted_u128(probe4)
+            .encrypted_u128(probe5)
+            .encrypted_u128(probe6)
+            .encrypted_u128(probe7)
             .build();
 
         queue_computation(
