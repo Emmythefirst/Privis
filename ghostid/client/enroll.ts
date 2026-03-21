@@ -6,11 +6,8 @@
 
 import * as anchor from "@coral-xyz/anchor";
 import { Program, AnchorProvider, Idl } from "@coral-xyz/anchor";
-import { PublicKey, Keypair } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import {
-  awaitComputationFinalization,
-  getArciumEnv,
-  getCompDefAccOffset,
   getArciumAccountBaseSeed,
   getArciumProgramId,
   getArciumProgram,
@@ -25,9 +22,41 @@ import {
   getLookupTableAddress,
   deserializeLE,
 } from "@arcium-hq/client";
-import { randomBytes } from "crypto";
+// Web Crypto API used instead of Node crypto
 import * as fs from "fs";
 import { prepareEnrollment } from "./biometric";
+
+// Browser-compatible replacement for awaitComputationFinalization
+async function pollComputationFinalization(
+  provider: AnchorProvider,
+  computationOffset: anchor.BN,
+  program: Program<Idl>,
+  timeoutMs: number = 1800000,
+): Promise<string> {
+  const { getComputationAccAddress, getMXEAccAddress } = await import("@arcium-hq/client");
+  const compAcc = getComputationAccAddress(456, computationOffset);
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const sigs = await provider.connection.getSignaturesForAddress(
+        program.programId, { limit: 20 }, "confirmed"
+      );
+      for (const s of sigs) {
+        const tx = await provider.connection.getTransaction(s.signature, {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        });
+        const logs = tx?.meta?.logMessages ?? [];
+        if (logsHaveEnrolledEvent(logs, program)) {
+          return s.signature;
+        }
+      }
+    } catch (_) {}
+  }
+  throw new Error("Computation did not finalize within timeout");
+}
 
 export interface EnrollResult {
   biometricAccount: PublicKey;
@@ -45,13 +74,11 @@ export interface EnrollResult {
 export async function initStoreCompDefIfNeeded(
   program: Program<Idl>,
   provider: AnchorProvider,
-  payer: Keypair,
+  payerKey: PublicKey,
 ): Promise<void> {
   const arciumProgram = getArciumProgram(provider);
-  const compDefOffset = Buffer.from(
-    getCompDefAccOffset("store_biometric"),
-  ).readUInt32LE();
-  const compDefAccount = getCompDefAccAddress(program.programId, compDefOffset);
+  const compDefOffset = 2555480933;
+  const compDefAccount = getCompDefAccAddress(program.programId, compDefOffset as any);
   const existing = await provider.connection.getAccountInfo(compDefAccount);
   if (existing) {
     console.log("store_biometric comp def already exists, skipping...");
@@ -59,7 +86,7 @@ export async function initStoreCompDefIfNeeded(
   }
 
   const baseSeed = getArciumAccountBaseSeed("ComputationDefinitionAccount");
-  const offset = getCompDefAccOffset("store_biometric");
+  const offset = Buffer.from([101, 139, 81, 152]);
   const compDefPDA = PublicKey.findProgramAddressSync(
     [baseSeed, program.programId.toBuffer(), offset],
     getArciumProgramId(),
@@ -74,11 +101,10 @@ export async function initStoreCompDefIfNeeded(
     .initStoreBiometricCompDef()
     .accounts({
       compDefAccount: compDefPDA,
-      payer: payer.publicKey,
+      payer: payerKey,
       mxeAccount,
       addressLookupTable: lutAddress,
     })
-    .signers([payer])
     .rpc({ commitment: "confirmed" });
 
   const rawCircuit = fs.readFileSync("build/store_biometric.arcis");
@@ -98,13 +124,11 @@ export async function initStoreCompDefIfNeeded(
 export async function initMatchCompDefIfNeeded(
   program: Program<Idl>,
   provider: AnchorProvider,
-  payer: Keypair,
+  payerKey: PublicKey,
 ): Promise<void> {
   const arciumProgram = getArciumProgram(provider);
-  const compDefOffset = Buffer.from(
-    getCompDefAccOffset("match_biometric"),
-  ).readUInt32LE();
-  const compDefAccount = getCompDefAccAddress(program.programId, compDefOffset);
+  const compDefOffset = 3958313864;
+  const compDefAccount = getCompDefAccAddress(program.programId, compDefOffset as any);
   const existing = await provider.connection.getAccountInfo(compDefAccount);
   if (existing) {
     console.log("match_biometric comp def already exists, skipping...");
@@ -112,7 +136,7 @@ export async function initMatchCompDefIfNeeded(
   }
 
   const baseSeed = getArciumAccountBaseSeed("ComputationDefinitionAccount");
-  const offset = getCompDefAccOffset("match_biometric");
+  const offset = Buffer.from([136, 19, 239, 235]);
   const compDefPDA = PublicKey.findProgramAddressSync(
     [baseSeed, program.programId.toBuffer(), offset],
     getArciumProgramId(),
@@ -127,11 +151,10 @@ export async function initMatchCompDefIfNeeded(
     .initMatchBiometricCompDef()
     .accounts({
       compDefAccount: compDefPDA,
-      payer: payer.publicKey,
+      payer: payerKey,
       mxeAccount,
       addressLookupTable: lutAddress,
     })
-    .signers([payer])
     .rpc({ commitment: "confirmed" });
 
   const rawCircuit = fs.readFileSync("build/match_biometric.arcis");
@@ -156,24 +179,23 @@ export async function enroll(
   embedding: Float32Array,
   program: Program<Idl>,
   provider: AnchorProvider,
-  payer: Keypair,
+  payerKey: PublicKey,
 ): Promise<EnrollResult> {
-  const arciumEnv = getArciumEnv();
-
+  
   const mxePublicKey = await getMXEPublicKey(provider, program.programId);
   const encrypted = prepareEnrollment(embedding, mxePublicKey);
   console.log("Biometric encrypted — 8 ciphertexts ready.");
 
   const [biometricAccount] = PublicKey.findProgramAddressSync(
-    [Buffer.from("biometric"), payer.publicKey.toBuffer()],
+    [Buffer.from("biometric"), payerKey.toBuffer()],
     program.programId,
   );
   console.log("BiometricAccount PDA:", biometricAccount.toString());
 
-  const compDefOffset = Buffer.from(
-    getCompDefAccOffset("store_biometric"),
-  ).readUInt32LE();
-  const computationOffset = new anchor.BN(randomBytes(8), "hex");
+  const compDefOffset = 2555480933;
+  const offsetArr = new Uint8Array(8);
+  globalThis.crypto.getRandomValues(offsetArr);
+  const computationOffset = new anchor.BN(Buffer.from(offsetArr).toString("hex"), "hex");
 
   const tx = await (program as any).methods
     .enroll(
@@ -190,17 +212,17 @@ export async function enroll(
       new anchor.BN(deserializeLE(encrypted.nonce).toString()),
     )
     .accountsPartial({
-      payer: payer.publicKey,
+      payer: payerKey,
       biometricAccount,
       computationAccount: getComputationAccAddress(
-        arciumEnv.arciumClusterOffset,
+        456,
         computationOffset,
       ),
-      clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+      clusterAccount: getClusterAccAddress(456),
       mxeAccount: getMXEAccAddress(program.programId),
-      mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-      executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
-      compDefAccount: getCompDefAccAddress(program.programId, compDefOffset),
+      mempoolAccount: getMempoolAccAddress(456),
+      executingPool: getExecutingPoolAccAddress(456),
+      compDefAccount: getCompDefAccAddress(program.programId, compDefOffset as any),
     })
     .transaction();
 
@@ -209,7 +231,7 @@ export async function enroll(
     await provider.connection.getLatestBlockhash("confirmed");
   tx.recentBlockhash = blockhash;
   tx.lastValidBlockHeight = lastValidBlockHeight;
-  tx.feePayer = payer.publicKey;
+  tx.feePayer = payerKey;
 
   const signedTx = await provider.wallet.signTransaction(tx);
   const enrollSig = await provider.connection.sendRawTransaction(
@@ -223,11 +245,10 @@ export async function enroll(
   console.log("Enroll sig:", enrollSig);
 
   console.log("Awaiting store_biometric MPC finalization (up to 10 min)...");
-  const finalizeSig = await awaitComputationFinalization(
+  const finalizeSig = await pollComputationFinalization(
     provider,
     computationOffset,
-    program.programId,
-    "confirmed",
+    program,
     1800000,
   );
   console.log("Finalize sig:", finalizeSig);

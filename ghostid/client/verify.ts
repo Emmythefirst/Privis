@@ -15,11 +15,8 @@
 
 import * as anchor from "@coral-xyz/anchor";
 import { Program, AnchorProvider, Idl } from "@coral-xyz/anchor";
-import { PublicKey, Keypair } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import {
-  awaitComputationFinalization,
-  getArciumEnv,
-  getCompDefAccOffset,
   getMXEPublicKey,
   getMXEAccAddress,
   getMempoolAccAddress,
@@ -31,8 +28,37 @@ import {
   RescueCipher,
   x25519,
 } from "@arcium-hq/client";
-import { randomBytes } from "crypto";
+// Web Crypto API used instead of Node crypto
 import { embeddingToPacked } from "./biometric";
+
+async function pollComputationFinalization(
+  provider: AnchorProvider,
+  computationOffset: anchor.BN,
+  program: Program<Idl>,
+  timeoutMs: number = 1800000,
+): Promise<string> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const sigs = await provider.connection.getSignaturesForAddress(
+        program.programId, { limit: 20 }, "confirmed"
+      );
+      for (const s of sigs) {
+        const tx = await provider.connection.getTransaction(s.signature, {
+          commitment: "confirmed",
+          maxSupportedTransactionVersion: 0,
+        });
+        const logs = tx?.meta?.logMessages ?? [];
+        const found = extractMatchEvent(logs, program);
+        if (found) {
+          return s.signature;
+        }
+      }
+    } catch (_) {}
+  }
+  throw new Error("Computation did not finalize within timeout");
+}
 
 export const MATCH_THRESHOLD = 4000;
 
@@ -56,10 +82,9 @@ export async function verify(
   enrollNonce: Uint8Array,
   program: Program<Idl>,
   provider: AnchorProvider,
-  payer: Keypair,
+  payerKey: PublicKey,
 ): Promise<VerifyResult> {
-  const arciumEnv = getArciumEnv();
-  const mxePublicKey = await getMXEPublicKey(provider, program.programId);
+    const mxePublicKey = await getMXEPublicKey(provider, program.programId);
 
   // ── 1. Fetch stored template ciphertexts from BiometricAccount ────────────
   const [biometricAccount] = PublicKey.findProgramAddressSync(
@@ -89,7 +114,9 @@ export async function verify(
   const ephemeralPrivateKey = x25519.utils.randomSecretKey();
   const ephemeralPublicKey = x25519.getPublicKey(ephemeralPrivateKey);
   const sharedSecret = x25519.getSharedSecret(ephemeralPrivateKey, mxePublicKey);
-  const verifyNonce = randomBytes(16);
+  const verifyNonceArr = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(verifyNonceArr);
+  const verifyNonce = Buffer.from(verifyNonceArr);
 
   const verifyCipher = new RescueCipher(sharedSecret);
   // Circuit order: tmpl0..7 then probe0..7 → encrypt all 16 together
@@ -100,10 +127,10 @@ export async function verify(
   console.log("Template + probe re-encrypted together under fresh key.");
 
   // ── 5. Send verify tx with all 16 explicit ciphertexts ───────────────────
-  const compDefOffset = Buffer.from(
-    getCompDefAccOffset("match_biometric"),
-  ).readUInt32LE();
-  const computationOffset = new anchor.BN(randomBytes(8), "hex");
+  const compDefOffset = 3958313864;
+  const offsetArr = new Uint8Array(8);
+  globalThis.crypto.getRandomValues(offsetArr);
+  const computationOffset = new anchor.BN(Buffer.from(offsetArr).toString("hex"), "hex");
 
   const tmpl = allCiphertexts.slice(0, 8).map(ct => Array.from(ct));
   const probe = allCiphertexts.slice(8, 16).map(ct => Array.from(ct));
@@ -117,18 +144,18 @@ export async function verify(
       new anchor.BN(deserializeLE(verifyNonce).toString()),
     )
     .accountsPartial({
-      payer: payer.publicKey,
+      payer: payerKey,
       biometricAccount,
       subject: subjectPubkey,
       computationAccount: getComputationAccAddress(
-        arciumEnv.arciumClusterOffset,
+        456,
         computationOffset,
       ),
-      clusterAccount: getClusterAccAddress(arciumEnv.arciumClusterOffset),
+      clusterAccount: getClusterAccAddress(456),
       mxeAccount: getMXEAccAddress(program.programId),
-      mempoolAccount: getMempoolAccAddress(arciumEnv.arciumClusterOffset),
-      executingPool: getExecutingPoolAccAddress(arciumEnv.arciumClusterOffset),
-      compDefAccount: getCompDefAccAddress(program.programId, compDefOffset),
+      mempoolAccount: getMempoolAccAddress(456),
+      executingPool: getExecutingPoolAccAddress(456),
+      compDefAccount: getCompDefAccAddress(program.programId, compDefOffset as any),
     })
     .transaction();
 
@@ -137,7 +164,7 @@ export async function verify(
     await provider.connection.getLatestBlockhash("confirmed");
   tx.recentBlockhash = blockhash;
   tx.lastValidBlockHeight = lastValidBlockHeight;
-  tx.feePayer = payer.publicKey;
+  tx.feePayer = payerKey;
 
   const signedTx = await provider.wallet.signTransaction(tx);
   const verifySig = await provider.connection.sendRawTransaction(
@@ -152,11 +179,10 @@ export async function verify(
 
   // ── 6. Await MPC finalization ─────────────────────────────────────────────
   console.log("Awaiting match_biometric MPC finalization (up to 10 min)...");
-  const finalizeSig = await awaitComputationFinalization(
+  const finalizeSig = await pollComputationFinalization(
     provider,
     computationOffset,
-    program.programId,
-    "confirmed",
+    program,
     1800000,
   );
   console.log("Finalize sig:", finalizeSig);

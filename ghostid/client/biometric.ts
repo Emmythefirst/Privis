@@ -14,7 +14,7 @@
  */
 
 import { RescueCipher, x25519 } from "@arcium-hq/client";
-import { randomBytes } from "crypto";
+// Use Web Crypto API instead of Node crypto for browser compatibility
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Encoding
@@ -127,7 +127,9 @@ export function encryptBiometric(
   const sharedSecret = x25519.getSharedSecret(ephemeralPrivateKey, mxePublicKey);
 
   const cipher = new RescueCipher(sharedSecret);
-  const nonce = randomBytes(16);
+  const nonceArr = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(nonceArr);
+  const nonce = Buffer.from(nonceArr);
   // RescueCipher.encrypt returns number[][]
   const ciphertexts: number[][] = cipher.encrypt(packed, nonce);
 

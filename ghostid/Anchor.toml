@@ -6,10 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-ghost_id = "HT8LVfZ55r3TyZ1DrZxzFnybi1sGxYMjv694o5vEx8BN"
+ghost_id = "FvYk7gGNJijiY82XXcGKXER65JdrqmAh9h23EA86GkoB"
 
 [programs.devnet]
-ghost_id = "HT8LVfZ55r3TyZ1DrZxzFnybi1sGxYMjv694o5vEx8BN"
+ghost_id = "FvYk7gGNJijiY82XXcGKXER65JdrqmAh9h23EA86GkoB"
 
 [registry]
 url = "https://api.apr.dev"

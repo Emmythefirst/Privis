@@ -3,7 +3,7 @@ import { uploadCircuit } from '@arcium-hq/client';
 import * as fs from 'fs';
 import { Connection } from '@solana/web3.js';
 
-const PROGRAM_ID = 'HT8LVfZ55r3TyZ1DrZxzFnybi1sGxYMjv694o5vEx8BN';
+const PROGRAM_ID = 'FvYk7gGNJijiY82XXcGKXER65JdrqmAh9h23EA86GkoB';
 const OPTS = { skipPreflight: true, preflightCommitment: 'confirmed' as const, commitment: 'confirmed' as const };
 
 async function uploadWithRetry(provider: anchor.AnchorProvider, name: string, programId: anchor.web3.PublicKey, raw: Buffer) {

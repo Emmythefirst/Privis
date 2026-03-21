@@ -49,8 +49,8 @@ describe("GhostID", () => {
 
   before(async () => {
     console.log("\n=== Initializing computation definitions ===");
-    await initStoreCompDefIfNeeded(p, provider, payer);
-    await initMatchCompDefIfNeeded(p, provider, payer);
+    await initStoreCompDefIfNeeded(p, provider, payer.publicKey);
+    await initMatchCompDefIfNeeded(p, provider, payer.publicKey);
     console.log("Comp defs ready.\n");
   });
 
@@ -60,7 +60,7 @@ describe("GhostID", () => {
     enrolledEmbedding = randomEmbedding();
     console.log("Enrolling with synthetic 128-dim embedding...");
 
-    const result = await enroll(enrolledEmbedding, p, provider, payer);
+    const result = await enroll(enrolledEmbedding, p, provider, payer.publicKey);
 
     // Save for verify tests
     enrollSharedSecret = result.sharedSecret;
@@ -82,7 +82,7 @@ describe("GhostID", () => {
 
   it("Re-enrolling with a new embedding updates the stored ciphertexts", async () => {
     // Re-enroll with the SAME embedding so verify tests remain consistent
-    const result = await enroll(enrolledEmbedding, p, provider, payer);
+    const result = await enroll(enrolledEmbedding, p, provider, payer.publicKey);
     expect(result.enrolled).to.be.true;
     // Update shared secret + nonce to match latest stored ciphertexts
     enrollSharedSecret = result.sharedSecret;
@@ -139,7 +139,7 @@ describe("GhostID", () => {
       enrollNonce,
       p,
       provider,
-      payer,
+      payer.publicKey,
     );
 
     console.log("Verify sig:", result.verifySig);
@@ -161,7 +161,7 @@ describe("GhostID", () => {
       enrollNonce,
       p,
       provider,
-      payer,
+      payer.publicKey,
     );
 
     console.log("Verify sig:", result.verifySig);
